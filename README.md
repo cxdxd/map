@@ -9,8 +9,8 @@
 - **全球机场地图**：收录 22,135 座拥有 ICAO 四字码的机场（241 个国家 / 地区），按大型 / 中型 / 小型 / 水上基地 / 直升机场分层渲染。全球视图先显示大型 / 中型机场，放大到 Z3 后自动加入全部机场；支持缩放、拖拽与全球视图。
 - **ICAO 搜索**：输入四字码即时匹配，支持前缀（如 `EG` 列出伦敦机场群）；同时支持机场名称、城市和 IATA 代码。`Enter` 直接打开最佳结果。
 - **机场详情**：大号 ICAO、IATA、城市/国家、经纬度、海拔、定期航班状态，以及跑道长度与道面；地图同步绘制所选机场的真实跑道。
-- **收藏系统**：机场卡片或搜索结果右侧的星标即可收藏；游客模式下写入浏览器 `localStorage`，登录后写入当前账号的本地账号文件。
-- **账号系统**：本地登录 / 注册界面，收藏夹与账号绑定；账号、密码哈希和收藏保存在 `storage/accounts.json`。
+- **收藏系统**：机场卡片或搜索结果右侧的星标即可收藏；游客模式写入浏览器 `localStorage`，登录后同步到当前云端账号。
+- **云端账号**：基于 Supabase Auth + Postgres 的登录 / 注册，收藏夹与账号绑定；密码哈希由 Supabase Auth 管理，`profiles` 表通过 RLS 限制为本人读写。
 - **收藏备份**：侧栏收藏标题右侧的「备份」菜单可一键导出 / 导入 JSON 文件，导入会与现有收藏合并，适合换电脑或清理浏览器前留档。
 - **地图特殊显示**：收藏机场以**金色星标 + 呼吸脉冲光环**显示，高缩放时附带 ICAO 标签；「仅显示收藏」会把地图聚焦到全部收藏。
 - **收藏夹面板**：收藏列表、最近查看、热门机场、一键定位收藏。
@@ -20,9 +20,13 @@
 
 ## 运行
 
-### 本地账号版（推荐）
+### 线上
 
-双击 **`start.bat`**。它会用内置的 Python 运行时在后台启动本地服务，等接口就绪后自动打开：
+直接打开 **https://cxdxd.github.io/map/**。账号由 Supabase 云端提供，登录 / 注册后收藏会跟随账号。
+
+### 本地入口（可选）
+
+双击 **`start.bat`**。它会用内置的 Python 运行时在后台启动本地静态服务，等接口就绪后自动打开：
 
 ```text
 http://127.0.0.1:8000/
@@ -34,38 +38,31 @@ http://127.0.0.1:8000/
 
 ![账号登录界面](shots/preview-account.png)
 
-登录后，侧栏会显示当前账号和收藏同步状态：
+登录后，侧栏会显示云端账号和同步状态：
 
-![登录后的账号收藏](shots/preview-account-logged.png)
+![登录后的云端账号](shots/preview-account-logged.png)
 
-账号功能需要这个本地服务。服务自动把账号和收藏写入：
-
-```text
-storage/accounts.json
-storage/sessions.json
-```
+云端账号不依赖这个本地服务；`start.bat` 只是本地入口，并保留 `server.py` 作为离线 / 旧账号兜底。
 
 ### 游客模式
 
-直接双击 `index.html` 仍是游客模式：地图、搜索、收藏、备份都能用，但登录/注册会提示需要本地服务，收藏只保存在当前浏览器。
+不登录也可以使用地图、搜索、收藏和备份；收藏只保存在当前浏览器。
 
-> 公开的 GitHub Pages 是纯静态托管，无法运行本地文件后端，因此公开站点的登录/注册不可用；账号版请在自己电脑上通过 `start.bat` 使用。若想在公网提供账号，需要额外的云后端。
+> 底图瓦片、字体与图标来自 OpenFreeMap（在线），因此首次打开需要联网；机场索引、搜索和收藏数据由本地脚本与 Supabase 提供。
 
-> 底图瓦片、字体与图标来自 OpenFreeMap（在线），因此首次打开需要联网；机场索引、搜索和收藏完全本地化。
+## 云端账号（Supabase）
 
-## 账号与本地服务
-
-- `server.py` 提供静态页面、注册、登录、会话和收藏同步接口；前端通过 `/api/*` 调用。
-- 密码使用 **PBKDF2-HMAC-SHA256**（210,000 次迭代）加盐哈希，`storage/accounts.json` 中不保存明文密码。
-- 会话使用 HttpOnly Cookie，有效期 7 天；服务重启后登录状态仍可通过 `storage/sessions.json` 恢复。
-- 注册时会把当前游客收藏归入新账号；登录后会切换到该账号的收藏，退出后恢复游客收藏。
-- 账号文件是本机文件，**换电脑时复制 `storage/` 或使用「备份 → 导出收藏」迁移**；不要把 `storage/` 上传到公开仓库。
-- 如果希望局域网内其他电脑使用账号版，可在项目目录执行：
-  ```bash
-  runtime\python.exe server.py --host 0.0.0.0
-  ```
-  然后让其他电脑访问 `http://<这台电脑的局域网IP>:8000/`。账号文件仍只保存在这台电脑上。
-- 本地目录里的 `runtime/` 是内置的 Windows Python 3.12 运行时，体积较大，已在 `.gitignore` 中排除；GitHub 仓库不包含它。从仓库下载后，如电脑没有 Python，请安装 Python 3.10+，或直接把本地的 `runtime/` 目录一起复制过去；`start.ps1` 会自动尝试 `runtime\python.exe` 或系统 `python`。
+- 项目 URL：`https://pinfvtiqssfzwaxnpfxa.supabase.co`
+- 前端配置：`data/cloud-config.js`（只放 Project URL 和 **publishable / anon** 公开 key）
+- 登录方式：**邮箱 + 密码**；注册时可设置显示名称。
+- 密码保存在 Supabase Auth 的 `auth.users` 中，以哈希形式管理；网页不接触密码哈希。
+- 收藏保存在 Postgres 的 `public.profiles.favorites`（JSONB），RLS 策略只允许 `auth.uid() = id` 的本人读写。
+- 建表 SQL：`cloud/supabase-schema.sql`
+- 接入说明：`cloud/SETUP.md`
+- 注册后默认需要点击邮件里的确认链接；可在 Supabase Authentication → URL Configuration 把 Site URL 设为 `https://cxdxd.github.io/map/`，并加入 `http://127.0.0.1:8000/**`。
+- 不要把 **service_role / secret key** 放进网页或仓库；前端只使用 publishable / anon key，RLS 负责隔离数据。
+- 旧的本地账号仍保留在 `storage/`（不会上传）；本地旧账号的收藏已导出到 `storage/cloud-migration-favorites.json`，登录云端账号后可用「备份 → 导入收藏」迁移。
+- 本地账号兜底仍由 `server.py` 提供，账号文件为 `storage/accounts.json`、会话为 `storage/sessions.json`；`storage/` 与 `runtime/` 都在 `.gitignore` 中。
 
 ## 操作
 
@@ -88,11 +85,11 @@ storage/sessions.json
 
 ## 收藏数据与备份
 
-收藏保存在浏览器的 **localStorage** 中，键名为 `aeroatlas.favorites.v2`；最近查看的键名为 `aeroatlas.recent.v1`。这些数据不在项目文件夹里，也不在 DSH 中，**关闭页面、浏览器或 DSH 都不会删除**；只要继续使用同一个浏览器配置文件和同样的打开地址，下次打开会自动恢复。
+游客收藏保存在浏览器的 **localStorage** 中，键名为 `aeroatlas.favorites.v2`；最近查看的键名为 `aeroatlas.recent.v1`。登录后，收藏改由 Supabase 的 `profiles.favorites` 提供并同步，不再依赖浏览器本地键；游客收藏仍保留，退出后恢复。
 
 ![收藏备份菜单](shots/preview-backup.png)
 
-**推荐备份方式**：点击侧栏「收藏机场」右侧的「备份」→「导出收藏」，会下载一个 `aeroatlas-favorites-YYYY-MM-DD.json` 文件；需要恢复时点击「导入收藏」选择该文件。导入会与现有收藏合并，不会删除已有收藏。
+**推荐备份方式**：点击侧栏「收藏机场」右侧的「备份」→「导出收藏」，会下载一个 `aeroatlas-favorites-YYYY-MM-DD.json` 文件；需要恢复时点击「导入收藏」选择该文件。导入会与现有收藏合并，不会删除已有收藏；登录状态下会同步到云端账号。
 
 ### 内置的「机场24」收藏
 
@@ -100,7 +97,7 @@ storage/sessions.json
 
 ![机场24 收藏效果](shots/preview-airports24.png)
 
-需要注意，存储按来源（origin）隔离：
+需要注意，**游客收藏**按来源（origin）隔离；登录后的云端收藏跟随账号，不受来源影响：
 
 - `file:///.../index.html`
 - `http://localhost:8000/`
@@ -142,19 +139,21 @@ python tools/prepare_basemap.py # 下载 OpenFreeMap 暗色样式并调成深蓝
 ```
 index.html               页面结构
 assets/style.css         视觉样式
-assets/app.js            地图、搜索、收藏、账号逻辑
-server.py                本地静态服务 + 账号 / 收藏 API
-start.bat                启动本地账号版（调用 start.ps1）
+assets/app.js            地图、搜索、收藏、云端/本地账号逻辑
+data/cloud-config.js     Supabase Project URL + publishable key（公开）
+cloud/                   Supabase 建表 SQL 与接入说明
+server.py                本地静态服务 + 旧账号 / 离线兜底 API
+start.bat                启动本地入口（调用 start.ps1）
 start.ps1                后台启动服务、等待就绪并打开浏览器
-stop-server.bat          停止本地账号服务
-storage/                 运行后生成的账号、会话和启动日志（不要上传）
+stop-server.bat          停止本地服务
+storage/                 本地旧账号、会话和启动日志（不要上传）
 runtime/                 内置 Windows Python 3.12 运行时（不要上传）
 data/airports.js         22,135 座机场 + 跑道索引
 data/airports24-seed.js  机场24.docx 的 82 座本地预置收藏
 data/basemap.js          离线海岸线兜底
 data/basemap-style.js    调色后的 OpenFreeMap 暗色样式
 airports24-favorites.json 机场24 收藏备份（可通过「备份」导入）
-vendor/                  MapLibre GL JS
+vendor/                  MapLibre GL JS、Supabase JS
 tools/                   数据抓取与构建脚本
 shots/                   预览截图
 ```

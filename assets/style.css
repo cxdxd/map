@@ -1229,6 +1229,15 @@ body.many-favorites .fav-marker > .ic { filter: drop-shadow(0 0 4px rgba(255, 19
   line-height: 1.4;
   color: #ff9b9b;
 }
+.auth-notice {
+  padding: 9px 10px;
+  border: 1px solid rgba(93, 240, 165, 0.24);
+  border-radius: 8px;
+  background: rgba(93, 240, 165, 0.055);
+  color: #9fe8c0;
+  font-size: 10px;
+  line-height: 1.55;
+}
 .auth-submit {
   height: 43px;
   border: 1px solid rgba(92, 214, 255, 0.45);

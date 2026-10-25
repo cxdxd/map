@@ -124,6 +124,24 @@
     /^10\./.test(seedHost) || /^192\.168\./.test(seedHost) ||
     /^172\.(1[6-9]|2\d|3[01])\./.test(seedHost);
 
+  const cloudConfig = window.AERO_CLOUD && window.AERO_CLOUD.enabled ? window.AERO_CLOUD : null;
+  let cloud = null;
+  if (cloudConfig && cloudConfig.url && cloudConfig.key &&
+      window.supabase && typeof window.supabase.createClient === 'function') {
+    try {
+      cloud = window.supabase.createClient(cloudConfig.url, cloudConfig.key, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true
+        }
+      });
+    } catch (err) {
+      cloud = null;
+    }
+  }
+  const cloudEnabled = !!cloud;
+
   if (isLocalOrigin && Array.isArray(window.AERO_AIRPORTS24)) {
     let alreadySeeded = false;
     try { alreadySeeded = localStorage.getItem(AIRPORTS24_SEED_KEY) === '1'; } catch (err) { /* ignore */ }
@@ -212,15 +230,20 @@
     authClose: $('#authClose'),
     authForm: $('#authForm'),
     authTabs: $('#authTabs'),
+    authIdentityLabel: $('#authIdentityLabel'),
+    authDisplayField: $('#authDisplayField'),
+    authDisplayName: $('#authDisplayName'),
     authUsername: $('#authUsername'),
     authPassword: $('#authPassword'),
     authConfirm: $('#authConfirm'),
     authConfirmField: $('#authConfirmField'),
+    authNotice: $('#authNotice'),
     authError: $('#authError'),
     authSubmit: $('#authSubmit'),
     authUnavailable: $('#authUnavailable'),
     authTitle: $('#authTitle'),
     authHint: $('#authHint'),
+    authFoot: $('#authFoot'),
     authDismiss: $('#authDismiss')
   };
 
@@ -881,13 +904,17 @@
       els.accountBar.classList.add('is-logged');
       els.accountAvatar.textContent = String(authUser.username || '?').slice(0, 1).toUpperCase();
       els.accountName.textContent = authUser.username;
-      els.accountSub.textContent = '收藏已绑定账号';
+      els.accountSub.textContent = authUser.cloud ? '云端账号 · 已同步' : '收藏已绑定账号';
       els.accountAction.textContent = '退出';
     } else {
       els.accountBar.classList.remove('is-logged');
       els.accountAvatar.textContent = '?';
       els.accountName.textContent = '游客模式';
-      els.accountSub.textContent = authAvailable ? '登录后收藏跟随账号' : '账号功能需本地启动';
+      if (cloudEnabled) {
+        els.accountSub.textContent = authAvailable ? '登录后收藏同步到云端' : '云端账号准备中…';
+      } else {
+        els.accountSub.textContent = authAvailable ? '登录后收藏跟随账号' : '账号功能需本地启动';
+      }
       els.accountAction.textContent = authAvailable ? '登录 / 注册' : '了解';
     }
   }
@@ -896,27 +923,63 @@
     if (authUser) els.accountSub.textContent = text;
   }
 
+  function setAuthNotice(text) {
+    if (!els.authNotice) return;
+    els.authNotice.textContent = text || '';
+    els.authNotice.hidden = !text;
+  }
+
   function setAuthTab(tab) {
     authTab = tab === 'register' ? 'register' : 'login';
     const isRegister = authTab === 'register';
+    const cloudMode = cloudEnabled;
     $$('.auth-tab', els.authTabs).forEach((button) => {
       button.classList.toggle('is-active', button.dataset.authTab === authTab);
     });
     els.authTitle.textContent = isRegister ? '注册账号' : '登录账号';
-    els.authHint.textContent = isRegister
-      ? '注册后，当前收藏会归入新账号并保存在本机。'
-      : '登录后会切换到该账号的收藏；游客收藏仍保留在本机。';
+    els.authHint.textContent = cloudMode
+      ? (isRegister
+        ? '注册后账号和收藏保存在 Supabase 云端。'
+        : '登录后从云端加载账号和收藏。')
+      : (isRegister
+        ? '注册后，当前收藏会归入新账号并保存在本机。'
+        : '登录后会切换到该账号的收藏；游客收藏仍保留在本机。');
+
+    els.authIdentityLabel.textContent = cloudMode ? '邮箱' : '用户名';
+    els.authUsername.type = cloudMode ? 'email' : 'text';
+    els.authUsername.setAttribute('autocomplete', cloudMode ? 'email' : 'username');
+    els.authUsername.setAttribute('placeholder', cloudMode ? 'you@example.com' : '3-20 位字母、数字或下划线');
+    if (cloudMode) {
+      els.authUsername.removeAttribute('pattern');
+      els.authUsername.setAttribute('minlength', '5');
+      els.authUsername.setAttribute('maxlength', '254');
+    } else {
+      els.authUsername.setAttribute('pattern', '[A-Za-z0-9_]{3,20}');
+      els.authUsername.setAttribute('minlength', '3');
+      els.authUsername.setAttribute('maxlength', '20');
+    }
+
+    els.authDisplayField.hidden = !(cloudMode && isRegister);
     els.authConfirmField.hidden = !isRegister;
     els.authPassword.setAttribute('autocomplete', isRegister ? 'new-password' : 'current-password');
-    els.authSubmit.textContent = isRegister ? '注册并登录' : '登录';
+    els.authSubmit.textContent = isRegister ? (cloudMode ? '注册' : '注册并登录') : '登录';
     els.authError.textContent = '';
+    setAuthNotice('');
+    if (els.authFoot) {
+      els.authFoot.innerHTML = cloudMode
+        ? '账号和收藏保存在 <code>Supabase</code> 云数据库；密码由 Supabase Auth 哈希保存，不保存明文。'
+        : '账号与收藏保存在本机 <code>storage/accounts.json</code>；密码以 PBKDF2 哈希存储，不保存明文。';
+    }
   }
 
   function resetAuthForm() {
     els.authForm.reset();
     els.authError.textContent = '';
+    setAuthNotice('');
     els.authSubmit.disabled = false;
-    els.authSubmit.textContent = authTab === 'register' ? '注册并登录' : '登录';
+    els.authSubmit.textContent = authTab === 'register'
+      ? (cloudEnabled ? '注册' : '注册并登录')
+      : '登录';
     authBusy = false;
   }
 
@@ -939,7 +1002,8 @@
     }
     resetAuthForm();
     setAuthTab(tab);
-    window.setTimeout(() => els.authUsername.focus(), 30);
+    const focusTarget = cloudEnabled && tab === 'register' ? els.authDisplayName : els.authUsername;
+    window.setTimeout(() => focusTarget.focus(), 30);
   }
 
   function closeAuthModal() {
@@ -977,8 +1041,29 @@
   }
 
   function persistFavorites() {
-    if (authUser) scheduleAccountSync();
+    if (authUser && authUser.cloud) scheduleCloudSync();
+    else if (authUser) scheduleAccountSync();
     else writeStore(FAV_KEY, favOrder);
+  }
+
+  function scheduleCloudSync() {
+    if (!authUser || !authUser.cloud) return;
+    setAccountSyncStatus('云端同步中…');
+    clearTimeout(accountSyncTimer);
+    accountSyncTimer = window.setTimeout(async () => {
+      if (!authUser || !authUser.cloud) return;
+      try {
+        const { error } = await cloud.from('profiles').update({
+          favorites: favOrder.slice(),
+          updated_at: new Date().toISOString()
+        }).eq('id', authUser.id);
+        if (error) throw error;
+        setAccountSyncStatus('云端账号 · 已同步');
+      } catch (err) {
+        setAccountSyncStatus('云端账号 · 同步失败');
+        toast('云端收藏同步失败，请检查网络');
+      }
+    }, 450);
   }
 
   function scheduleAccountSync() {
@@ -1000,15 +1085,168 @@
     }, 450);
   }
 
+  function cloudFallbackName(user) {
+    return (user && user.user_metadata && user.user_metadata.display_name) ||
+      (user && user.email ? user.email.split('@')[0] : 'pilot');
+  }
+
+  function cloudErrorMessage(error) {
+    const message = String((error && (error.message || error.error_description)) || '');
+    if (/Invalid login credentials/i.test(message)) return '邮箱或密码错误';
+    if (/Email not confirmed/i.test(message)) return '邮箱还没确认，请先点击确认邮件里的链接';
+    if (/User already registered/i.test(message)) return '这个邮箱已经注册，请直接登录';
+    if (/Password should be at least/i.test(message)) return '密码至少需要 6 位';
+    if (/email rate limit/i.test(message)) return '邮件发送太频繁，请稍后再试';
+    if (/Signups not allowed/i.test(message)) return '项目暂时关闭了注册';
+    if (/Invalid email/i.test(message)) return '请输入有效邮箱';
+    if (/Failed to fetch|NetworkError|Load failed/i.test(message)) return '无法连接 Supabase，请检查网络';
+    return message || '操作失败，请稍后重试';
+  }
+
+  async function ensureCloudProfile(user) {
+    const select = 'id,display_name,favorites';
+    let { data, error } = await cloud.from('profiles')
+      .select(select)
+      .eq('id', user.id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) {
+      const inserted = await cloud.from('profiles').insert({
+        id: user.id,
+        display_name: cloudFallbackName(user),
+        favorites: []
+      }).select(select).single();
+      if (inserted.error) {
+        const retry = await cloud.from('profiles')
+          .select(select)
+          .eq('id', user.id)
+          .maybeSingle();
+        if (retry.error || !retry.data) throw inserted.error;
+        data = retry.data;
+      } else {
+        data = inserted.data;
+      }
+    }
+    return data || { id: user.id, display_name: cloudFallbackName(user), favorites: [] };
+  }
+
+  async function finishCloudLogin(user, options = {}) {
+    const profile = await ensureCloudProfile(user);
+    const favorites = Array.isArray(profile.favorites) ? profile.favorites : [];
+    authUser = {
+      id: user.id,
+      username: profile.display_name || cloudFallbackName(user),
+      email: user.email || '',
+      cloud: true
+    };
+    seededFavoriteCount = 0;
+    applyFavorites(favorites);
+    updateAccountUI();
+
+    const initialFavorites = Array.isArray(options.initialFavorites) ? options.initialFavorites : null;
+    if (!favorites.length && initialFavorites && initialFavorites.length) {
+      const codes = [];
+      const seen = new Set();
+      initialFavorites.forEach((value) => {
+        const code = String(value == null ? '' : value).trim().toUpperCase();
+        if (byCode.has(code) && !seen.has(code)) {
+          seen.add(code);
+          codes.push(code);
+        }
+      });
+      if (codes.length) {
+        const { error } = await cloud.from('profiles').update({
+          favorites: codes,
+          updated_at: new Date().toISOString()
+        }).eq('id', user.id);
+        if (error) {
+          toast('账号已登录，但初始收藏没有同步成功');
+          return;
+        }
+        applyFavorites(codes);
+        updateAccountUI();
+      }
+    }
+  }
+
   async function submitAuth(event) {
     event.preventDefault();
     if (!authAvailable || authBusy) return;
     const isRegister = authTab === 'register';
-    const username = els.authUsername.value.trim();
+    const identity = els.authUsername.value.trim();
     const password = els.authPassword.value;
+    const displayName = els.authDisplayName.value.trim();
     els.authError.textContent = '';
+    setAuthNotice('');
 
-    if (!/^[A-Za-z0-9_]{3,20}$/.test(username)) {
+    if (cloudEnabled) {
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(identity)) {
+        els.authError.textContent = '请输入有效邮箱';
+        return;
+      }
+      if (isRegister && displayName && (displayName.length < 2 || displayName.length > 24)) {
+        els.authError.textContent = '显示名称需为 2-24 位';
+        return;
+      }
+      if (password.length < 6) {
+        els.authError.textContent = '密码至少需要 6 位';
+        return;
+      }
+      if (isRegister && password !== els.authConfirm.value) {
+        els.authError.textContent = '两次输入的密码不一致';
+        return;
+      }
+
+      authBusy = true;
+      els.authSubmit.disabled = true;
+      els.authSubmit.textContent = isRegister ? '正在注册…' : '正在登录…';
+      try {
+        if (isRegister) {
+          const { data, error } = await cloud.auth.signUp({
+            email: identity,
+            password,
+            options: {
+              data: { display_name: displayName || identity.split('@')[0] }
+            }
+          });
+          if (error) throw error;
+          if (!data.session || !data.user) {
+            setAuthTab('login');
+            els.authUsername.value = identity;
+            els.authPassword.value = '';
+            els.authConfirm.value = '';
+            setAuthNotice('确认邮件已发送到 ' + identity + '。请点击邮件里的确认链接，然后回来登录。');
+            els.authSubmit.disabled = false;
+            els.authSubmit.textContent = '登录';
+            authBusy = false;
+            return;
+          }
+          await finishCloudLogin(data.user, { initialFavorites: favOrder.slice() });
+          closeAuthModal();
+          toast('注册成功，账号已同步到云端');
+        } else {
+          const { data, error } = await cloud.auth.signInWithPassword({
+            email: identity,
+            password
+          });
+          if (error) throw error;
+          await finishCloudLogin(data.user);
+          closeAuthModal();
+          toast('登录成功，已加载云端收藏');
+        }
+      } catch (err) {
+        els.authError.textContent = cloudErrorMessage(err);
+      } finally {
+        authBusy = false;
+        els.authSubmit.disabled = false;
+        if (!els.authModal.hidden) {
+          els.authSubmit.textContent = authTab === 'register' ? '注册' : '登录';
+        }
+      }
+      return;
+    }
+
+    if (!/^[A-Za-z0-9_]{3,20}$/.test(identity)) {
       els.authError.textContent = '用户名需为 3-20 位字母、数字或下划线';
       return;
     }
@@ -1025,7 +1263,7 @@
     els.authSubmit.disabled = true;
     els.authSubmit.textContent = isRegister ? '正在注册…' : '正在登录…';
     try {
-      const body = { username, password };
+      const body = { username: identity, password };
       if (isRegister) body.favorites = favOrder.slice();
       const data = await apiRequest(isRegister ? '/api/register' : '/api/login', {
         method: 'POST',
@@ -1039,21 +1277,25 @@
       toast(isRegister
         ? '注册成功，收藏已绑定到 ' + authUser.username
         : '登录成功，已切换到 ' + authUser.username + ' 的收藏');
-      authBusy = false;
     } catch (err) {
       els.authError.textContent = err.message || '操作失败，请稍后重试';
-      els.authSubmit.textContent = isRegister ? '注册并登录' : '登录';
-      els.authSubmit.disabled = false;
+    } finally {
       authBusy = false;
+      els.authSubmit.disabled = false;
+      if (!els.authModal.hidden) {
+        els.authSubmit.textContent = authTab === 'register' ? '注册并登录' : '登录';
+      }
     }
   }
 
   async function logoutAccount() {
     if (!authUser) return;
     const username = authUser.username;
+    const isCloud = !!authUser.cloud;
     clearTimeout(accountSyncTimer);
     try {
-      await apiRequest('/api/logout', { method: 'POST', body: {} });
+      if (isCloud) await cloud.auth.signOut();
+      else await apiRequest('/api/logout', { method: 'POST', body: {} });
     } catch (err) { /* local logout still applies */ }
     authUser = null;
     const guest = readStore(FAV_KEY, []).filter((code) => byCode.has(code));
@@ -1063,6 +1305,21 @@
   }
 
   async function initAuth() {
+    els.accountBar.hidden = false;
+    if (cloudEnabled) {
+      authAvailable = true;
+      updateAccountUI();
+      try {
+        const { data: { session } } = await cloud.auth.getSession();
+        if (session && session.user) {
+          await finishCloudLogin(session.user);
+        }
+      } catch (err) {
+        updateAccountUI();
+      }
+      updateAccountUI();
+      return;
+    }
     if (!isLocalOrigin) {
       authAvailable = false;
       els.accountBar.hidden = true;

@@ -223,8 +223,13 @@
     </div>
 
     <form class="auth-form" id="authForm" autocomplete="on">
+      <label class="auth-field" id="authDisplayField" hidden>
+        <span>显示名称</span>
+        <input id="authDisplayName" type="text" minlength="2" maxlength="24" autocomplete="nickname"
+               placeholder="例如 cxd">
+      </label>
       <label class="auth-field">
-        <span>用户名</span>
+        <span id="authIdentityLabel">用户名</span>
         <input id="authUsername" name="username" type="text" minlength="3" maxlength="20"
                pattern="[A-Za-z0-9_]{3,20}" autocomplete="username" required>
       </label>
@@ -238,10 +243,11 @@
         <input id="authConfirm" type="password" minlength="6" maxlength="128"
                autocomplete="new-password">
       </label>
+      <div class="auth-notice" id="authNotice" hidden></div>
       <div class="auth-error" id="authError" role="alert"></div>
       <button class="auth-submit" id="authSubmit" type="submit">登录</button>
     </form>
-    <p class="auth-foot">账号与收藏保存在本机 <code>storage/accounts.json</code>；密码以 PBKDF2 哈希存储，不保存明文。</p>
+    <p class="auth-foot" id="authFoot">账号与收藏保存在本机 <code>storage/accounts.json</code>；密码以 PBKDF2 哈希存储，不保存明文。</p>
   </div>
 </div>
 
@@ -272,6 +278,8 @@
 <script src="data/basemap-style.js"></script>
 <script src="data/airports.js"></script>
 <script src="data/airports24-seed.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="data/cloud-config.js"></script>
 <script src="assets/app.js"></script>
 </body>
 </html>
