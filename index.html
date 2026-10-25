@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>AeroAtlas · 全球机场图鉴</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23060d18'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%235cd6ff' stroke-width='1.5'/%3E%3Cpath d='M16 7v18M7 16h18' stroke='%235cd6ff' stroke-width='1' opacity='.45'/%3E%3Ccircle cx='24' cy='9' r='2.5' fill='%23ffc65c'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="vendor/maplibre-gl.css">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<!-- icon sprite -->
+<svg class="sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.6"/><path d="M15.7 15.7L21 21"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2.8l2.75 5.57 6.15.9-4.45 4.33 1.05 6.12L12 16.83l-5.5 2.89 1.05-6.12L3.1 9.27l6.15-.9L12 2.8z"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="9" ry="3.7"/><path d="M3 12h18M12 3c2.6 2.4 4 5.6 4 9s-1.4 6.6-4 9c-2.6-2.4-4-5.6-4-9s1.4-6.6 4-9z"/></symbol>
+  <symbol id="i-dice" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><circle cx="8.5" cy="8.5" r="1.1" class="fill"/><circle cx="15.5" cy="8.5" r="1.1" class="fill"/><circle cx="12" cy="12" r="1.1" class="fill"/><circle cx="8.5" cy="15.5" r="1.1" class="fill"/><circle cx="15.5" cy="15.5" r="1.1" class="fill"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="12" height="12" rx="2.5"/><path d="M5.5 15.5h-1a1.5 1.5 0 01-1.5-1.5V4.5A1.5 1.5 0 014.5 3H14a1.5 1.5 0 011.5 1.5v1"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3.5v11.5M7.5 10.5L12 15l4.5-4.5M5 20h14"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7.5 8.5L12 4l4.5 4.5M5 20h14"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21.2s7-6.3 7-11.2a7 7 0 10-14 0c0 4.9 7 11.2 7 11.2z"/><circle cx="12" cy="10" r="2.6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M4.5 12.5l5 5L19.5 7"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M7 17L17 7M8 7h9v9"/></symbol>
+  <symbol id="i-plane" viewBox="0 0 24 24"><path d="M10.2 13.8L3 12.1l1.4-1.5 7.2 1.1L16 6.3c.6-.6 1.7-.6 2.3 0 .6.6.6 1.7 0 2.3l-5.4 4.4 1.1 7.2-1.5 1.4-1.7-7.2-3.4 3.4.3 3.1-1.4 1.4-1.3-4.3-4.3-1.3L2.1 19l3.1.3 3.4-3.4z"/></symbol>
+</svg>
+
+<div id="map" aria-label="全球机场地图"></div>
+<div class="map-vignette" aria-hidden="true"></div>
+<div class="fav-layer" id="favLayer"></div>
+
+<aside class="sidebar" id="sidebar">
+  <header class="brand">
+    <div class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 48 48">
+        <defs>
+          <linearGradient id="brandGrad" x1="8" y1="40" x2="40" y2="8" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#3ea8d8"/><stop offset="1" stop-color="#b9f1ff"/>
+          </linearGradient>
+        </defs>
+        <circle cx="24" cy="24" r="14.5" fill="none" stroke="url(#brandGrad)" stroke-width="1.3"/>
+        <ellipse cx="24" cy="24" rx="14.5" ry="6" fill="none" stroke="url(#brandGrad)" stroke-width="1" opacity=".65" transform="rotate(-24 24 24)"/>
+        <path d="M24 9.5v29M9.5 24h29" stroke="url(#brandGrad)" stroke-width=".7" opacity=".3"/>
+        <circle cx="36.4" cy="13.2" r="3.1" fill="#ffc65c"/>
+        <circle cx="36.4" cy="13.2" r="5.4" fill="none" stroke="#ffc65c" stroke-width=".6" opacity=".35"/>
+      </svg>
+    </div>
+    <div class="brand-text">
+      <div class="brand-name">AERO<span>ATLAS</span></div>
+      <div class="brand-sub">GLOBAL AIRPORT ATLAS</div>
+    </div>
+    <div class="brand-badge" id="brandBadge">22K</div>
+  </header>
+
+  <div class="search" id="searchWrap">
+    <div class="search-field" id="searchField">
+      <svg class="ic"><use href="#i-search"/></svg>
+      <input id="searchInput" type="text" placeholder="输入 ICAO 四字码，如 KJFK" aria-label="按 ICAO 代码搜索机场"
+             autocomplete="off" autocapitalize="characters" spellcheck="false" enterkeyhint="search">
+      <button class="search-clear" id="searchClear" type="button" aria-label="清除搜索" hidden>
+        <svg class="ic"><use href="#i-close"/></svg>
+      </button>
+      <kbd>/</kbd>
+    </div>
+    <div class="search-panel" id="searchPanel" role="listbox" aria-label="搜索结果"></div>
+  </div>
+
+  <section class="fav-section">
+    <div class="section-head">
+      <h2 class="section-title">收藏机场 <span class="count-pill" id="favCount">0</span></h2>
+      <div class="section-tools">
+        <button class="text-btn" id="favFit" type="button">定位收藏</button>
+        <button class="text-btn" id="favBackup" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="favMenu">备份</button>
+      </div>
+    </div>
+    <div class="fav-menu" id="favMenu" role="menu" aria-label="收藏备份" hidden>
+      <div class="fav-menu-head">收藏备份</div>
+      <button class="fav-menu-item" id="exportFav" type="button" role="menuitem">
+        <svg class="ic"><use href="#i-download"/></svg>
+        <span class="menu-copy"><b>导出收藏</b><small>保存为 JSON 备份文件</small></span>
+      </button>
+      <button class="fav-menu-item" id="importFav" type="button" role="menuitem">
+        <svg class="ic"><use href="#i-upload"/></svg>
+        <span class="menu-copy"><b>导入收藏</b><small>从 JSON 备份恢复</small></span>
+      </button>
+      <div class="fav-menu-note">导入会与现有收藏合并</div>
+    </div>
+    <div class="fav-list" id="favList"></div>
+    <input type="file" id="favFileInput" accept=".json,application/json" hidden>
+  </section>
+
+  <section class="filters">
+    <div class="section-head">
+      <h2 class="section-title">地图图层</h2>
+      <button class="text-btn" id="filterReset" type="button">重置</button>
+    </div>
+    <div class="chips" id="typeChips"></div>
+    <p class="layer-note">全球视图显示主要机场，放大到 Z3 查看全部</p>
+    <label class="switch-row">
+      <span class="switch-copy">仅显示收藏</span>
+      <input type="checkbox" id="favOnly">
+      <span class="switch" aria-hidden="true"><i></i></span>
+    </label>
+  </section>
+
+  <footer class="sidebar-foot">
+    <span><b id="totalAirports">0</b> 座 ICAO 机场 · <b id="totalCountries">0</b> 个国家 / 地区</span>
+    <button class="icon-btn" id="randomBtn" type="button" title="随机探索一座机场" aria-label="随机探索一座机场">
+      <svg class="ic"><use href="#i-dice"/></svg>
+    </button>
+  </footer>
+</aside>
+
+<div class="map-controls" id="mapControls">
+  <button id="zoomIn" type="button" aria-label="放大"><svg class="ic"><use href="#i-plus"/></svg></button>
+  <button id="zoomOut" type="button" aria-label="缩小"><svg class="ic"><use href="#i-minus"/></svg></button>
+  <span class="ctrl-sep"></span>
+  <button id="resetView" type="button" aria-label="回到全球视图" title="全球视图"><svg class="ic"><use href="#i-globe"/></svg></button>
+</div>
+
+<section class="airport-card" id="airportCard" aria-hidden="true">
+  <button class="card-close" id="cardClose" type="button" aria-label="关闭机场详情">
+    <svg class="ic"><use href="#i-close"/></svg>
+  </button>
+  <div class="card-scroll">
+    <div class="card-top">
+      <div class="card-eyebrow">
+        <span id="cardType">LARGE AIRPORT</span>
+        <i class="eyebrow-dot"></i>
+        <span id="cardCountry">UNITED STATES</span>
+      </div>
+      <div class="card-codes">
+        <span class="card-icao" id="cardIcao">KJFK</span>
+        <span class="card-iata" id="cardIata">JFK</span>
+      </div>
+      <h2 class="card-name" id="cardName">John F. Kennedy International Airport</h2>
+      <div class="card-loc">
+        <svg class="ic"><use href="#i-pin"/></svg>
+        <span id="cardLoc">New York, United States</span>
+      </div>
+    </div>
+
+    <div class="card-body">
+      <div class="stat-grid">
+        <div><span>纬度 LAT</span><b id="statLat">—</b></div>
+        <div><span>经度 LON</span><b id="statLon">—</b></div>
+        <div><span>海拔 ELEV</span><b id="statElev">—</b></div>
+        <div><span>定期航班</span><b id="statSched">—</b></div>
+      </div>
+
+      <div class="runway-block" id="runwayBlock">
+        <div class="block-head"><span>跑道 RUNWAYS</span><b id="runwayCount">0</b></div>
+        <div class="runway-list" id="runwayList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card-actions">
+    <button class="fav-btn" id="cardFav" type="button">
+      <svg class="ic solid"><use href="#i-star"/></svg><span>收藏机场</span>
+    </button>
+    <button class="copy-btn" id="cardCopy" type="button" aria-label="复制坐标" title="复制坐标">
+      <svg class="ic"><use href="#i-copy"/></svg>
+    </button>
+  </div>
+</section>
+
+<div class="hud" id="hud" aria-hidden="true">
+  <span id="hudLat">--.----° N</span><i></i><span id="hudLon">---.----° E</span><i></i><span id="hudZoom">Z 1.0</span>
+</div>
+
+<div class="offline-badge" id="offlineBadge" hidden>离线矢量底图 · NATURAL EARTH</div>
+
+<div class="attribution">
+  © <a href="https://openfreemap.org/" target="_blank" rel="noopener">OpenFreeMap</a>
+  · <a href="https://openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a>
+  · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>
+  · <a href="https://ourairports.com/data/" target="_blank" rel="noopener">OurAirports</a>
+</div>
+
+<div class="cursor-tip" id="cursorTip" hidden>
+  <b id="tipCode">KJFK</b><span id="tipName"></span>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite">
+  <svg class="ic solid"><use href="#i-star"/></svg>
+  <span id="toastText"></span>
+</div>
+
+<div class="loader" id="loader">
+  <div class="loader-inner">
+    <div class="loader-mark" aria-hidden="true">
+      <svg viewBox="0 0 48 48">
+        <defs>
+          <linearGradient id="loaderGrad" x1="8" y1="40" x2="40" y2="8" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#3ea8d8"/><stop offset="1" stop-color="#b9f1ff"/>
+          </linearGradient>
+        </defs>
+        <circle cx="24" cy="24" r="14.5" fill="none" stroke="url(#loaderGrad)" stroke-width="1.3"/>
+        <ellipse cx="24" cy="24" rx="14.5" ry="6" fill="none" stroke="url(#loaderGrad)" stroke-width="1" opacity=".65" transform="rotate(-24 24 24)"/>
+        <path d="M24 9.5v29M9.5 24h29" stroke="url(#loaderGrad)" stroke-width=".7" opacity=".3"/>
+        <circle cx="36.4" cy="13.2" r="3.1" fill="#ffc65c"/>
+      </svg>
+    </div>
+    <div class="loader-word">AERO<span>ATLAS</span></div>
+    <div class="loader-sub">GLOBAL AIRPORT ATLAS</div>
+    <div class="loader-bar"><i></i></div>
+    <div class="loader-status" id="loaderStatus">正在装载全球机场数据…</div>
+  </div>
+</div>
+
+<script src="vendor/maplibre-gl.js"></script>
+<script src="data/basemap.js"></script>
+<script src="data/basemap-style.js"></script>
+<script src="data/airports.js"></script>
+<script src="data/airports24-seed.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
