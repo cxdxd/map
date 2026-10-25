@@ -1,0 +1,7 @@
+# Local-only files
+storage/
+runtime/
+
+# Python
+__pycache__/
+*.pyc

@@ -108,6 +108,11 @@
   const favSet = new Set(favOrder);
   let recent = readStore(RECENT_KEY, []).filter((code) => byCode.has(code));
   let favOnly = false;
+  let authAvailable = false;
+  let authUser = null;
+  let authBusy = false;
+  let authTab = 'login';
+  let accountSyncTimer = 0;
 
   // One-time local seed generated from 机场24.docx. Public deployments are
   // excluded so visitors do not inherit the owner's personal collection.
@@ -196,7 +201,27 @@
     runwayList: $('#runwayList'),
     totalAirports: $('#totalAirports'),
     totalCountries: $('#totalCountries'),
-    brandBadge: $('#brandBadge')
+    brandBadge: $('#brandBadge'),
+    accountBar: $('#accountBar'),
+    accountAvatar: $('#accountAvatar'),
+    accountName: $('#accountName'),
+    accountSub: $('#accountSub'),
+    accountAction: $('#accountAction'),
+    authModal: $('#authModal'),
+    authCard: $('#authCard'),
+    authClose: $('#authClose'),
+    authForm: $('#authForm'),
+    authTabs: $('#authTabs'),
+    authUsername: $('#authUsername'),
+    authPassword: $('#authPassword'),
+    authConfirm: $('#authConfirm'),
+    authConfirmField: $('#authConfirmField'),
+    authError: $('#authError'),
+    authSubmit: $('#authSubmit'),
+    authUnavailable: $('#authUnavailable'),
+    authTitle: $('#authTitle'),
+    authHint: $('#authHint'),
+    authDismiss: $('#authDismiss')
   };
 
   /* ----------------------------------------------------------
@@ -683,7 +708,7 @@
     if (favSet.has(code)) {
       favSet.delete(code);
       favOrder = favOrder.filter((item) => item !== code);
-      writeStore(FAV_KEY, favOrder);
+      persistFavorites();
       toast(code + ' 已取消收藏');
       if (state.selected && state.selected[0] === code) updateFavButtons();
       else renderFavorites();
@@ -698,7 +723,7 @@
     } else {
       favSet.add(code);
       favOrder.unshift(code);
-      writeStore(FAV_KEY, favOrder);
+      persistFavorites();
       toast(code + ' 已加入收藏' + (a[2] ? ' · ' + a[2] : ''));
       if (state.selected && state.selected[0] === code) updateFavButtons();
       else renderFavorites();
@@ -807,7 +832,7 @@
           added += 1;
         }
       });
-      writeStore(FAV_KEY, favOrder);
+      persistFavorites();
       syncFavMarkers();
       updateFavButtons();
       updateMarkerLabelMode();
@@ -825,6 +850,250 @@
     if (!state.mapReady) return;
     const hide = map.getZoom() < 3.1;
     document.body.classList.toggle('hide-fav-labels', hide);
+  }
+
+  /* ----------------------------------------------------------
+     Accounts (file-backed local server)
+     ---------------------------------------------------------- */
+  async function apiRequest(path, options = {}) {
+    const init = {
+      method: options.method || 'GET',
+      credentials: 'same-origin',
+      headers: {}
+    };
+    if (options.body !== undefined) {
+      init.headers['Content-Type'] = 'application/json';
+      init.body = JSON.stringify(options.body);
+    }
+    const response = await fetch(path, init);
+    let data = null;
+    try { data = await response.json(); } catch (err) { /* non-JSON error page */ }
+    if (!response.ok) {
+      const error = new Error((data && data.error) || '请求失败');
+      error.status = response.status;
+      throw error;
+    }
+    return data || {};
+  }
+
+  function updateAccountUI() {
+    if (authUser) {
+      els.accountBar.classList.add('is-logged');
+      els.accountAvatar.textContent = String(authUser.username || '?').slice(0, 1).toUpperCase();
+      els.accountName.textContent = authUser.username;
+      els.accountSub.textContent = '收藏已绑定账号';
+      els.accountAction.textContent = '退出';
+    } else {
+      els.accountBar.classList.remove('is-logged');
+      els.accountAvatar.textContent = '?';
+      els.accountName.textContent = '游客模式';
+      els.accountSub.textContent = authAvailable ? '登录后收藏跟随账号' : '账号功能需本地启动';
+      els.accountAction.textContent = authAvailable ? '登录 / 注册' : '了解';
+    }
+  }
+
+  function setAccountSyncStatus(text) {
+    if (authUser) els.accountSub.textContent = text;
+  }
+
+  function setAuthTab(tab) {
+    authTab = tab === 'register' ? 'register' : 'login';
+    const isRegister = authTab === 'register';
+    $$('.auth-tab', els.authTabs).forEach((button) => {
+      button.classList.toggle('is-active', button.dataset.authTab === authTab);
+    });
+    els.authTitle.textContent = isRegister ? '注册账号' : '登录账号';
+    els.authHint.textContent = isRegister
+      ? '注册后，当前收藏会归入新账号并保存在本机。'
+      : '登录后会切换到该账号的收藏；游客收藏仍保留在本机。';
+    els.authConfirmField.hidden = !isRegister;
+    els.authPassword.setAttribute('autocomplete', isRegister ? 'new-password' : 'current-password');
+    els.authSubmit.textContent = isRegister ? '注册并登录' : '登录';
+    els.authError.textContent = '';
+  }
+
+  function resetAuthForm() {
+    els.authForm.reset();
+    els.authError.textContent = '';
+    els.authSubmit.disabled = false;
+    els.authSubmit.textContent = authTab === 'register' ? '注册并登录' : '登录';
+    authBusy = false;
+  }
+
+  function openAuthModal(tab = 'login') {
+    closeFavMenu();
+    closeSearchPanel();
+    els.authModal.hidden = false;
+    const available = authAvailable;
+    els.authModal.classList.toggle('is-unavailable', !available);
+    els.authUnavailable.hidden = available;
+    els.authForm.hidden = !available;
+    els.authTabs.hidden = !available;
+    els.authHint.hidden = !available;
+    if (!available) {
+      els.authTitle.textContent = '本地账号';
+      els.authHint.textContent = '';
+      els.authError.textContent = '';
+      window.setTimeout(() => els.authClose.focus(), 30);
+      return;
+    }
+    resetAuthForm();
+    setAuthTab(tab);
+    window.setTimeout(() => els.authUsername.focus(), 30);
+  }
+
+  function closeAuthModal() {
+    if (els.authModal.hidden) return;
+    els.authModal.hidden = true;
+    authBusy = false;
+    els.authSubmit.disabled = false;
+    if (els.authModal.contains(document.activeElement)) {
+      els.accountAction.focus();
+    }
+  }
+
+  function applyFavorites(codes) {
+    const next = [];
+    const seen = new Set();
+    (Array.isArray(codes) ? codes : []).forEach((value) => {
+      const code = String(value == null ? '' : value).trim().toUpperCase();
+      if (byCode.has(code) && !seen.has(code)) {
+        seen.add(code);
+        next.push(code);
+      }
+    });
+    favOrder = next;
+    favSet.clear();
+    next.forEach((code) => favSet.add(code));
+
+    if (favOnly && !next.length) {
+      favOnly = false;
+      els.favOnly.checked = false;
+      applyFilters();
+    }
+    syncFavMarkers();
+    updateFavButtons();
+    updateMarkerLabelMode();
+  }
+
+  function persistFavorites() {
+    if (authUser) scheduleAccountSync();
+    else writeStore(FAV_KEY, favOrder);
+  }
+
+  function scheduleAccountSync() {
+    if (!authUser) return;
+    setAccountSyncStatus('同步中…');
+    clearTimeout(accountSyncTimer);
+    accountSyncTimer = window.setTimeout(async () => {
+      if (!authUser) return;
+      try {
+        await apiRequest('/api/favorites', {
+          method: 'PUT',
+          body: { favorites: favOrder.slice() }
+        });
+        setAccountSyncStatus('收藏已绑定账号 · 已同步');
+      } catch (err) {
+        setAccountSyncStatus('收藏已绑定账号 · 同步失败');
+        toast('账号收藏同步失败，请检查本地服务');
+      }
+    }, 450);
+  }
+
+  async function submitAuth(event) {
+    event.preventDefault();
+    if (!authAvailable || authBusy) return;
+    const isRegister = authTab === 'register';
+    const username = els.authUsername.value.trim();
+    const password = els.authPassword.value;
+    els.authError.textContent = '';
+
+    if (!/^[A-Za-z0-9_]{3,20}$/.test(username)) {
+      els.authError.textContent = '用户名需为 3-20 位字母、数字或下划线';
+      return;
+    }
+    if (password.length < 6) {
+      els.authError.textContent = '密码至少需要 6 位';
+      return;
+    }
+    if (isRegister && password !== els.authConfirm.value) {
+      els.authError.textContent = '两次输入的密码不一致';
+      return;
+    }
+
+    authBusy = true;
+    els.authSubmit.disabled = true;
+    els.authSubmit.textContent = isRegister ? '正在注册…' : '正在登录…';
+    try {
+      const body = { username, password };
+      if (isRegister) body.favorites = favOrder.slice();
+      const data = await apiRequest(isRegister ? '/api/register' : '/api/login', {
+        method: 'POST',
+        body
+      });
+      authUser = data.user;
+      seededFavoriteCount = 0;
+      applyFavorites(data.favorites || []);
+      updateAccountUI();
+      closeAuthModal();
+      toast(isRegister
+        ? '注册成功，收藏已绑定到 ' + authUser.username
+        : '登录成功，已切换到 ' + authUser.username + ' 的收藏');
+      authBusy = false;
+    } catch (err) {
+      els.authError.textContent = err.message || '操作失败，请稍后重试';
+      els.authSubmit.textContent = isRegister ? '注册并登录' : '登录';
+      els.authSubmit.disabled = false;
+      authBusy = false;
+    }
+  }
+
+  async function logoutAccount() {
+    if (!authUser) return;
+    const username = authUser.username;
+    clearTimeout(accountSyncTimer);
+    try {
+      await apiRequest('/api/logout', { method: 'POST', body: {} });
+    } catch (err) { /* local logout still applies */ }
+    authUser = null;
+    const guest = readStore(FAV_KEY, []).filter((code) => byCode.has(code));
+    applyFavorites(guest);
+    updateAccountUI();
+    toast('已退出 ' + username + '，当前为游客模式');
+  }
+
+  async function initAuth() {
+    if (!isLocalOrigin) {
+      authAvailable = false;
+      els.accountBar.hidden = true;
+      return;
+    }
+    if (window.location.protocol === 'file:') {
+      authAvailable = false;
+      updateAccountUI();
+      return;
+    }
+    try {
+      const health = await apiRequest('/api/health');
+      authAvailable = !!health.ok;
+    } catch (err) {
+      authAvailable = false;
+    }
+    if (!authAvailable) {
+      updateAccountUI();
+      return;
+    }
+    try {
+      const data = await apiRequest('/api/me');
+      if (data && data.user) {
+        authUser = data.user;
+        seededFavoriteCount = 0;
+        applyFavorites(data.favorites || []);
+      }
+    } catch (err) {
+      authUser = null;
+    }
+    updateAccountUI();
   }
 
   function fitFavoriteBounds() {
@@ -1004,7 +1273,8 @@
             favOrder.push(code);
           }
         });
-        writeStore(FAV_KEY, favOrder);
+        if (authUser) persistFavorites();
+        else writeStore(FAV_KEY, favOrder);
         renderFavorites();
       }
       if (params.get('favonly') === '1' && favOrder.length) {
@@ -1395,8 +1665,7 @@
   els.cardClose.addEventListener('click', deselectAirport);
   els.cardFav.addEventListener('click', () => {
     if (state.selected) toggleFavorite(state.selected[0]);
-  });
-  els.cardCopy.addEventListener('click', async () => {
+  });  els.cardCopy.addEventListener('click', async () => {
     if (!state.selected) return;
     const a = state.selected;
     const text = a[0] + ' ' + a[7].toFixed(4) + ', ' + a[8].toFixed(4);
@@ -1450,6 +1719,25 @@
     event.stopPropagation();
     toggleFavMenu(event.detail === 0);
   });
+
+  els.accountAction.addEventListener('click', () => {
+    if (authUser) {
+      logoutAccount();
+      return;
+    }
+    openAuthModal('login');
+  });
+
+  els.authClose.addEventListener('click', closeAuthModal);
+  els.authDismiss.addEventListener('click', closeAuthModal);
+  els.authModal.addEventListener('click', (event) => {
+    if (event.target.matches('[data-auth-close]')) closeAuthModal();
+  });
+  els.authTabs.addEventListener('click', (event) => {
+    const tab = event.target.closest('[data-auth-tab]');
+    if (tab) setAuthTab(tab.dataset.authTab);
+  });
+  els.authForm.addEventListener('submit', submitAuth);
 
   els.exportFav.addEventListener('click', exportFavorites);
 
@@ -1526,6 +1814,13 @@
 
   /* Keyboard shortcuts */
   document.addEventListener('keydown', (event) => {
+    if (!els.authModal.hidden) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeAuthModal();
+      }
+      return;
+    }
     const target = event.target;
     const typing = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
     if ((event.key === '/' && !typing) || ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k')) {
@@ -1560,5 +1855,6 @@
     updateMarkerLabelMode();
     scheduleFavPositions();
   });
+  initAuth();
   fmtZoom();
 })();

@@ -56,6 +56,15 @@
     <div class="brand-badge" id="brandBadge">22K</div>
   </header>
 
+  <div class="account-bar" id="accountBar">
+    <div class="account-avatar" id="accountAvatar" aria-hidden="true">?</div>
+    <div class="account-meta">
+      <b id="accountName">游客模式</b>
+      <span id="accountSub">登录后收藏跟随账号</span>
+    </div>
+    <button class="account-action" id="accountAction" type="button">登录 / 注册</button>
+  </div>
+
   <div class="search" id="searchWrap">
     <div class="search-field" id="searchField">
       <svg class="ic"><use href="#i-search"/></svg>
@@ -189,6 +198,51 @@
 <div class="toast" id="toast" role="status" aria-live="polite">
   <svg class="ic solid"><use href="#i-star"/></svg>
   <span id="toastText"></span>
+</div>
+
+<div class="auth-modal" id="authModal" hidden>
+  <div class="auth-backdrop" data-auth-close></div>
+  <div class="auth-card" id="authCard" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+    <button class="auth-close" id="authClose" type="button" aria-label="关闭账号窗口">
+      <svg class="ic"><use href="#i-close"/></svg>
+    </button>
+    <div class="auth-kicker">AEROATLAS ACCOUNT</div>
+    <h2 class="auth-title" id="authTitle">登录账号</h2>
+    <p class="auth-hint" id="authHint">登录后，收藏会跟随账号保存在本机。</p>
+
+    <div class="auth-tabs" id="authTabs">
+      <button class="auth-tab is-active" type="button" data-auth-tab="login">登录</button>
+      <button class="auth-tab" type="button" data-auth-tab="register">注册</button>
+    </div>
+
+    <div class="auth-unavailable" id="authUnavailable" hidden>
+      <b>账号功能需要本地启动器</b>
+      <p>直接打开的网页无法读写本机账号文件。请回到项目文件夹双击 <code>start.bat</code>，浏览器会打开 <code>http://127.0.0.1:8000/</code>。</p>
+      <p>GitHub Pages 等公开静态站点也不提供账号服务；当前页面仍可作为游客使用，收藏保存在浏览器里。</p>
+      <button class="auth-submit auth-dismiss" id="authDismiss" type="button">继续以游客模式浏览</button>
+    </div>
+
+    <form class="auth-form" id="authForm" autocomplete="on">
+      <label class="auth-field">
+        <span>用户名</span>
+        <input id="authUsername" name="username" type="text" minlength="3" maxlength="20"
+               pattern="[A-Za-z0-9_]{3,20}" autocomplete="username" required>
+      </label>
+      <label class="auth-field">
+        <span>密码</span>
+        <input id="authPassword" name="password" type="password" minlength="6" maxlength="128"
+               autocomplete="current-password" required>
+      </label>
+      <label class="auth-field" id="authConfirmField" hidden>
+        <span>确认密码</span>
+        <input id="authConfirm" type="password" minlength="6" maxlength="128"
+               autocomplete="new-password">
+      </label>
+      <div class="auth-error" id="authError" role="alert"></div>
+      <button class="auth-submit" id="authSubmit" type="submit">登录</button>
+    </form>
+    <p class="auth-foot">账号与收藏保存在本机 <code>storage/accounts.json</code>；密码以 PBKDF2 哈希存储，不保存明文。</p>
+  </div>
 </div>
 
 <div class="loader" id="loader">

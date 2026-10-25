@@ -9,7 +9,8 @@
 - **全球机场地图**：收录 22,135 座拥有 ICAO 四字码的机场（241 个国家 / 地区），按大型 / 中型 / 小型 / 水上基地 / 直升机场分层渲染。全球视图先显示大型 / 中型机场，放大到 Z3 后自动加入全部机场；支持缩放、拖拽与全球视图。
 - **ICAO 搜索**：输入四字码即时匹配，支持前缀（如 `EG` 列出伦敦机场群）；同时支持机场名称、城市和 IATA 代码。`Enter` 直接打开最佳结果。
 - **机场详情**：大号 ICAO、IATA、城市/国家、经纬度、海拔、定期航班状态，以及跑道长度与道面；地图同步绘制所选机场的真实跑道。
-- **收藏系统**：机场卡片或搜索结果右侧的星标即可收藏；收藏会写入浏览器 `localStorage`，刷新后保留。
+- **收藏系统**：机场卡片或搜索结果右侧的星标即可收藏；游客模式下写入浏览器 `localStorage`，登录后写入当前账号的本地账号文件。
+- **账号系统**：本地登录 / 注册界面，收藏夹与账号绑定；账号、密码哈希和收藏保存在 `storage/accounts.json`。
 - **收藏备份**：侧栏收藏标题右侧的「备份」菜单可一键导出 / 导入 JSON 文件，导入会与现有收藏合并，适合换电脑或清理浏览器前留档。
 - **地图特殊显示**：收藏机场以**金色星标 + 呼吸脉冲光环**显示，高缩放时附带 ICAO 标签；「仅显示收藏」会把地图聚焦到全部收藏。
 - **收藏夹面板**：收藏列表、最近查看、热门机场、一键定位收藏。
@@ -19,16 +20,52 @@
 
 ## 运行
 
-直接双击 `index.html` 或 `start.bat` 即可（Chrome / Edge 下已验证 `file://` 可正常加载地图）。
+### 本地账号版（推荐）
 
-也可以启动本地静态服务器（推荐给 Firefox 或需要固定端口的场景）：
+双击 **`start.bat`**。它会用内置的 Python 运行时在后台启动本地服务，等接口就绪后自动打开：
 
-```bash
-python -m http.server 8000
-# 打开 http://localhost:8000/
+```text
+http://127.0.0.1:8000/
 ```
 
+如果浏览器显示 `ERR_CONNECTION_REFUSED`，说明后台服务没有运行：再双击一次 `start.bat`，等 1-2 秒后刷新页面即可。
+
+停止服务：双击 **`stop-server.bat`**。浏览器可以随时关闭，服务在后台继续运行；下次双击 `start.bat` 会复用已运行的服务。
+
+![账号登录界面](shots/preview-account.png)
+
+登录后，侧栏会显示当前账号和收藏同步状态：
+
+![登录后的账号收藏](shots/preview-account-logged.png)
+
+账号功能需要这个本地服务。服务自动把账号和收藏写入：
+
+```text
+storage/accounts.json
+storage/sessions.json
+```
+
+### 游客模式
+
+直接双击 `index.html` 仍是游客模式：地图、搜索、收藏、备份都能用，但登录/注册会提示需要本地服务，收藏只保存在当前浏览器。
+
+> 公开的 GitHub Pages 是纯静态托管，无法运行本地文件后端，因此公开站点的登录/注册不可用；账号版请在自己电脑上通过 `start.bat` 使用。若想在公网提供账号，需要额外的云后端。
+
 > 底图瓦片、字体与图标来自 OpenFreeMap（在线），因此首次打开需要联网；机场索引、搜索和收藏完全本地化。
+
+## 账号与本地服务
+
+- `server.py` 提供静态页面、注册、登录、会话和收藏同步接口；前端通过 `/api/*` 调用。
+- 密码使用 **PBKDF2-HMAC-SHA256**（210,000 次迭代）加盐哈希，`storage/accounts.json` 中不保存明文密码。
+- 会话使用 HttpOnly Cookie，有效期 7 天；服务重启后登录状态仍可通过 `storage/sessions.json` 恢复。
+- 注册时会把当前游客收藏归入新账号；登录后会切换到该账号的收藏，退出后恢复游客收藏。
+- 账号文件是本机文件，**换电脑时复制 `storage/` 或使用「备份 → 导出收藏」迁移**；不要把 `storage/` 上传到公开仓库。
+- 如果希望局域网内其他电脑使用账号版，可在项目目录执行：
+  ```bash
+  runtime\python.exe server.py --host 0.0.0.0
+  ```
+  然后让其他电脑访问 `http://<这台电脑的局域网IP>:8000/`。账号文件仍只保存在这台电脑上。
+- 本地目录里的 `runtime/` 是内置的 Windows Python 3.12 运行时，体积较大，已在 `.gitignore` 中排除；GitHub 仓库不包含它。从仓库下载后，如电脑没有 Python，请安装 Python 3.10+，或直接把本地的 `runtime/` 目录一起复制过去；`start.ps1` 会自动尝试 `runtime\python.exe` 或系统 `python`。
 
 ## 操作
 
@@ -105,7 +142,13 @@ python tools/prepare_basemap.py # 下载 OpenFreeMap 暗色样式并调成深蓝
 ```
 index.html               页面结构
 assets/style.css         视觉样式
-assets/app.js            地图、搜索、收藏逻辑
+assets/app.js            地图、搜索、收藏、账号逻辑
+server.py                本地静态服务 + 账号 / 收藏 API
+start.bat                启动本地账号版（调用 start.ps1）
+start.ps1                后台启动服务、等待就绪并打开浏览器
+stop-server.bat          停止本地账号服务
+storage/                 运行后生成的账号、会话和启动日志（不要上传）
+runtime/                 内置 Windows Python 3.12 运行时（不要上传）
 data/airports.js         22,135 座机场 + 跑道索引
 data/airports24-seed.js  机场24.docx 的 82 座本地预置收藏
 data/basemap.js          离线海岸线兜底
